@@ -1,0 +1,16 @@
+{
+  "name": "inventory-mqtt-subscriber",
+  "version": "1.0.0",
+  "description": "MQTT Subscriber for Inventory Environmental Monitoring",
+  "main": "subscriber.js",
+  "type": "module",
+  "scripts": {
+    "start": "node subscriber.js",
+    "dev": "node --watch subscriber.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "mqtt": "^5.10.1"
+  }
+}
