@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+:root {
+  --background: #e0e5ec;
+  --foreground: #4a5568;
+  
+  --accent: #3b82f6;
+  
+  --success: #10b981;
+  --error: #ef4444;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+}
+
+/* Neumorphic UI base card */
+.neumorph-card {
+  background: #e0e5ec;
+  border-radius: 1.2rem;
+  box-shadow: 9px 9px 16px rgb(163, 177, 198, 0.6), 
+              -9px -9px 16px rgba(255, 255, 255, 0.5);
+  transition: all 0.2s ease;
+}
+
+.neumorph-card:hover {
+  box-shadow: 12px 12px 20px rgb(163, 177, 198, 0.7), 
+              -12px -12px 20px rgba(255, 255, 255, 0.6);
+}
+
+/* Inset neumorphic for values or inputs */
+.neumorph-inset {
+  background: #e0e5ec;
+  border-radius: 1rem;
+  box-shadow: inset 6px 6px 10px 0 rgba(163, 177, 198, 0.6),
+              inset -6px -6px 10px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* Button style neumorphism */
+.neumorph-button {
+  background: #e0e5ec;
+  border-radius: 9999px;
+  box-shadow: 5px 5px 10px rgb(163, 177, 198, 0.6), 
+              -5px -5px 10px rgba(255, 255, 255, 0.5);
+}
+
+.neumorph-button:active {
+  box-shadow: inset 4px 4px 8px rgba(163, 177, 198, 0.6), 
+              inset -4px -4px 8px rgba(255, 255, 255, 0.5);
+}
