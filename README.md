@@ -96,3 +96,4 @@ Because Vercel is built for Serverless (HTTP) workloads, it cannot maintain the 
 
 ## Future Integration
 This module provides live environmental conditions (temperature and humidity). To integrate it with your broader Inventory Management System, link the `sensor_data` readings to specific storage sections or products (e.g., "Fridge A", "Warehouse Zone 2") in your overarching database schema.
+
