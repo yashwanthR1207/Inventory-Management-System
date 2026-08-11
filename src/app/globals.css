@@ -6,72 +6,260 @@
 }
 
 :root {
-  /* Perfect Neumorphism Palette */
-  --background: #e6eef4; /* Soft, cool blue-gray */
-  --foreground: #2d3748;
-  --text-muted: #718096;
-  
-  --shadow-light: #ffffff;
-  --shadow-dark: #c5d2e0;
+  /* Liquid Glossy Dark Palette */
+  --bg-primary: #0a0e1a;
+  --bg-secondary: #0f1528;
+  --bg-card: rgba(15, 22, 45, 0.65);
+  --bg-card-hover: rgba(20, 30, 60, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-hover: rgba(255, 255, 255, 0.14);
+  --glass-highlight: rgba(255, 255, 255, 0.04);
+
+  --text-primary: #e8ecf5;
+  --text-secondary: #8892b0;
+  --text-muted: #5a6380;
+
+  --accent-blue: #4f8fff;
+  --accent-blue-glow: rgba(79, 143, 255, 0.25);
+  --accent-emerald: #34d399;
+  --accent-emerald-glow: rgba(52, 211, 153, 0.25);
+  --accent-purple: #a78bfa;
+  --accent-orange: #fb923c;
+  --accent-red: #f87171;
+  --accent-amber: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: var(--bg-primary);
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(79, 143, 255, 0.08), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(52, 211, 153, 0.05), transparent);
+  color: var(--text-primary);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Base Neumorphic Card - Soft and extruded */
-.neumorph-card {
-  background: var(--background);
-  border-radius: 28px;
-  box-shadow: 14px 14px 28px var(--shadow-dark), 
-              -14px -14px 28px var(--shadow-light);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+/* ═══════════════════════════════════════════════════════
+   LIQUID GLASS CARD
+   ═══════════════════════════════════════════════════════ */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border-radius: 24px;
+  border: 1px solid var(--glass-border);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Hover effect for interactive cards (optional) */
-button.neumorph-card:hover, a.neumorph-card:hover {
-  box-shadow: 18px 18px 36px var(--shadow-dark), 
-              -18px -18px 36px var(--shadow-light);
+/* Glossy top reflection */
+.glass-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06) 0%,
+    rgba(255, 255, 255, 0.02) 40%,
+    transparent 100%
+  );
+  border-radius: 24px 24px 0 0;
+  pointer-events: none;
+}
+
+.glass-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--glass-border-hover);
   transform: translateY(-2px);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
 }
 
-/* Inset Neumorphic - Pressed in */
-.neumorph-inset {
-  background: var(--background);
-  border-radius: 20px;
-  box-shadow: inset 8px 8px 16px var(--shadow-dark),
-              inset -8px -8px 16px var(--shadow-light);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+/* ═══════════════════════════════════════════════════════
+   INNER GLASS WELL (for values, charts)
+   ═══════════════════════════════════════════════════════ */
+.glass-well {
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-/* Button style */
-.neumorph-button {
-  background: var(--background);
+/* ═══════════════════════════════════════════════════════
+   LIQUID BADGE / PILL
+   ═══════════════════════════════════════════════════════ */
+.glass-badge {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-radius: 9999px;
-  box-shadow: 6px 6px 12px var(--shadow-dark), 
-              -6px -6px 12px var(--shadow-light);
-  transition: all 0.2s ease;
-  font-weight: 600;
+  border: 1px solid var(--glass-border);
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-badge::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent);
+  pointer-events: none;
+}
+
+.glass-badge:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--glass-border-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* ═══════════════════════════════════════════════════════
+   BANNER (warnings / errors)
+   ═══════════════════════════════════════════════════════ */
+.glass-banner {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 16px;
+  border: 1px solid var(--glass-border);
+}
+
+/* ═══════════════════════════════════════════════════════
+   GLOWING ICON CONTAINER
+   ═══════════════════════════════════════════════════════ */
+.icon-glow {
+  position: relative;
+  border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-.neumorph-button:hover {
-  box-shadow: 8px 8px 16px var(--shadow-dark), 
-              -8px -8px 16px var(--shadow-light);
-  transform: translateY(-1px);
+.icon-glow::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 18px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
 }
 
-.neumorph-button:active {
-  box-shadow: inset 4px 4px 8px var(--shadow-dark), 
-              inset -4px -4px 8px var(--shadow-light);
-  border-color: transparent;
-  transform: translateY(1px);
+.icon-glow.blue {
+  background: rgba(79, 143, 255, 0.1);
+  border: 1px solid rgba(79, 143, 255, 0.15);
+}
+.icon-glow.blue::after {
+  box-shadow: 0 0 20px var(--accent-blue-glow);
+}
+
+.icon-glow.emerald {
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.15);
+}
+.icon-glow.emerald::after {
+  box-shadow: 0 0 20px var(--accent-emerald-glow);
+}
+
+.icon-glow.purple {
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.15);
+}
+.icon-glow.purple::after {
+  box-shadow: 0 0 20px rgba(167, 139, 250, 0.25);
+}
+
+.icon-glow.orange {
+  background: rgba(251, 146, 60, 0.1);
+  border: 1px solid rgba(251, 146, 60, 0.15);
+}
+.icon-glow.orange::after {
+  box-shadow: 0 0 20px rgba(251, 146, 60, 0.25);
+}
+
+.glass-card:hover .icon-glow::after {
+  opacity: 1;
+}
+
+/* ═══════════════════════════════════════════════════════
+   STATUS DOT with liquid glow
+   ═══════════════════════════════════════════════════════ */
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  position: relative;
+}
+
+.status-dot.online {
+  background: var(--accent-emerald);
+  box-shadow: 0 0 8px var(--accent-emerald-glow), 0 0 20px var(--accent-emerald-glow);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.status-dot.offline {
+  background: var(--text-muted);
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px var(--accent-emerald-glow), 0 0 20px var(--accent-emerald-glow); }
+  50% { box-shadow: 0 0 12px var(--accent-emerald-glow), 0 0 32px var(--accent-emerald-glow); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   CHART TOOLTIP override for dark liquid glass
+   ═══════════════════════════════════════════════════════ */
+.recharts-default-tooltip {
+  background: rgba(15, 22, 45, 0.9) !important;
+  backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4) !important;
+  padding: 14px 18px !important;
+}
+
+/* ═══════════════════════════════════════════════════════
+   LOADING SPINNER
+   ═══════════════════════════════════════════════════════ */
+@keyframes spin-smooth {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin-smooth {
+  animation: spin-smooth 1.2s linear infinite;
+}
+
+/* ═══════════════════════════════════════════════════════
+   SCROLLBAR (for dark theme)
+   ═══════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
 }

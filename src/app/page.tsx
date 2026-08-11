@@ -55,11 +55,11 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [supabaseError, setSupabaseError] = useState<string | null>(null);
 
-  // Configuration
   const DEVICE_TIMEOUT_SEC = 60;
   const DEVICE_ID = "esp32-01";
   const MQTT_STATUS_POLL_MS = 30_000;
 
+  // ─── MQTT status via API ──────────────────────────────────────────
   const checkMqttStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/mqtt-status");
@@ -77,17 +77,20 @@ export default function Dashboard() {
     }
   }, []);
 
+  // ─── Tick for relative timestamps ─────────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
+  // ─── Poll MQTT status ─────────────────────────────────────────────
   useEffect(() => {
     checkMqttStatus();
     const interval = setInterval(checkMqttStatus, MQTT_STATUS_POLL_MS);
     return () => clearInterval(interval);
   }, [checkMqttStatus]);
 
+  // ─── Fetch data + realtime subscription ───────────────────────────
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
@@ -110,7 +113,7 @@ export default function Dashboard() {
         if (sensorData && sensorData.length > 0) {
           setLatestData(sensorData[0]);
           setLastUpdatedTime(new Date(sensorData[0].timestamp));
-          setData(sensorData.reverse());
+          setData([...sensorData].reverse());
         }
       } catch (err) {
         console.error("Unexpected error:", err);
@@ -147,317 +150,298 @@ export default function Dashboard() {
     };
   }, []);
 
+  // ─── Device online/offline ────────────────────────────────────────
   useEffect(() => {
     if (!lastUpdatedTime) return;
-
     const diffInSeconds = (now.getTime() - lastUpdatedTime.getTime()) / 1000;
-    if (diffInSeconds < DEVICE_TIMEOUT_SEC) {
-      setDeviceStatus("ONLINE");
-    } else {
-      setDeviceStatus("OFFLINE");
-    }
+    setDeviceStatus(diffInSeconds < DEVICE_TIMEOUT_SEC ? "ONLINE" : "OFFLINE");
   }, [now, lastUpdatedTime]);
 
+  // ─── Helpers ──────────────────────────────────────────────────────
   const formatXAxis = (tickItem: string) => {
     try {
-      return format(new Date(tickItem), "HH:mm:ss");
+      return format(new Date(tickItem), "HH:mm");
     } catch {
       return "";
     }
   };
 
-  const getMqttStatusColor = () => {
+  const mqttColor = () => {
     switch (mqttStatus) {
-      case "CONNECTED":
-        return "text-emerald-500";
-      case "DISCONNECTED":
-        return "text-red-500";
-      case "CHECKING":
-        return "text-amber-500";
-      default:
-        return "text-gray-400";
+      case "CONNECTED": return "#34d399";
+      case "DISCONNECTED": return "#f87171";
+      case "CHECKING": return "#fbbf24";
+      default: return "#5a6380";
     }
   };
 
-  const getMqttIcon = () => {
-    if (mqttStatus === "CONNECTED") return <Wifi className="w-5 h-5 text-emerald-500" />;
-    if (mqttStatus === "DISCONNECTED") return <WifiOff className="w-5 h-5 text-red-500" />;
-    if (mqttStatus === "CHECKING") return <RefreshCw className="w-5 h-5 text-amber-500 animate-spin" />;
-    return <AlertCircle className="w-5 h-5 text-gray-400" />;
+  const mqttTextClass = () => {
+    switch (mqttStatus) {
+      case "CONNECTED": return "text-emerald-400";
+      case "DISCONNECTED": return "text-red-400";
+      case "CHECKING": return "text-amber-400";
+      default: return "text-gray-500";
+    }
   };
 
+  const MqttIcon = () => {
+    if (mqttStatus === "CONNECTED") return <Wifi className="w-4 h-4 text-emerald-400" />;
+    if (mqttStatus === "DISCONNECTED") return <WifiOff className="w-4 h-4 text-red-400" />;
+    if (mqttStatus === "CHECKING") return <RefreshCw className="w-4 h-4 text-amber-400 spin-smooth" />;
+    return <AlertCircle className="w-4 h-4 text-gray-500" />;
+  };
+
+  // ═══════════════════════════════════════════════════════════════════
+  // LOADING STATE
+  // ═══════════════════════════════════════════════════════════════════
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#e6eef4]">
-        <div className="text-center">
-          <div className="neumorph-card p-12 inline-block">
-            <RefreshCw className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-6" />
-            <h2 className="text-2xl font-black text-[#2d3748]">
-              Loading Dashboard...
-            </h2>
-            <p className="text-[#718096] mt-2 font-medium">
-              Connecting to sensor database
-            </p>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="glass-card p-14 text-center">
+          <div className="w-16 h-16 rounded-full mx-auto mb-6 flex items-center justify-center"
+            style={{ background: "rgba(79, 143, 255, 0.1)", border: "1px solid rgba(79, 143, 255, 0.2)" }}>
+            <RefreshCw className="w-8 h-8 text-[#4f8fff] spin-smooth" />
           </div>
+          <h2 className="text-2xl font-bold text-[#e8ecf5] mb-2">Loading Dashboard</h2>
+          <p className="text-[#8892b0]">Connecting to sensor database...</p>
         </div>
       </div>
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // MAIN RENDER
+  // ═══════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen p-6 md:p-10 lg:p-16 max-w-[1400px] mx-auto text-[#4a5568] bg-[#e6eef4]">
-      <header className="mb-12 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+    <div className="min-h-screen p-5 md:p-8 lg:p-12 max-w-[1440px] mx-auto">
+      {/* ─── HEADER ──────────────────────────────────────────────── */}
+      <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-          <h1 className="text-4xl md:text-5xl font-black text-[#2d3748] tracking-tight mb-2">
+          <h1 className="text-3xl md:text-4xl font-bold text-[#e8ecf5] tracking-tight">
             Inventory Environment
           </h1>
-          <p className="text-[#718096] font-medium text-lg">
-            Real-time tracking of warehouse storage conditions
+          <p className="text-[#8892b0] mt-1.5 text-sm font-medium">
+            Real-time warehouse storage conditions
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-5 text-sm font-bold w-full md:w-auto">
-          {/* MQTT Status Badge */}
+        <div className="flex gap-3 text-xs font-semibold">
+          {/* MQTT Badge */}
           <button
             onClick={checkMqttStatus}
-            className="flex flex-1 items-center justify-center gap-3 neumorph-button px-7 py-4 text-[#4a5568] cursor-pointer"
+            className="glass-badge px-5 py-2.5 flex items-center gap-2.5 cursor-pointer"
             title={mqttMessage}
           >
-            {getMqttIcon()}
-            <span>
-              MQTT{" "}
-              <span className={getMqttStatusColor()}>
-                ● {mqttStatus}
-              </span>
+            <MqttIcon />
+            <span className="text-[#8892b0]">MQTT</span>
+            <span className={mqttTextClass()} style={{ textShadow: `0 0 12px ${mqttColor()}40` }}>
+              ● {mqttStatus}
             </span>
           </button>
 
-          {/* Device Status Badge */}
-          <div className="flex flex-1 items-center justify-center gap-3 neumorph-button px-7 py-4 text-[#4a5568]">
-            <Cpu
-              className={`w-5 h-5 ${
-                deviceStatus === "ONLINE"
-                  ? "text-emerald-500"
-                  : "text-gray-400"
-              }`}
-            />
-            <span>
-              {latestData?.device_id || DEVICE_ID}{" "}
-              <span
-                className={
-                  deviceStatus === "ONLINE"
-                    ? "text-emerald-500"
-                    : "text-gray-400"
-                }
-              >
-                ● {deviceStatus}
-              </span>
+          {/* Device Badge */}
+          <div className="glass-badge px-5 py-2.5 flex items-center gap-2.5">
+            <Cpu className={`w-4 h-4 ${deviceStatus === "ONLINE" ? "text-emerald-400" : "text-gray-500"}`} />
+            <span className="text-[#8892b0]">{latestData?.device_id || DEVICE_ID}</span>
+            <span className={deviceStatus === "ONLINE" ? "text-emerald-400" : "text-gray-500"}
+              style={deviceStatus === "ONLINE" ? { textShadow: "0 0 12px rgba(52,211,153,0.4)" } : {}}>
+              ● {deviceStatus}
             </span>
           </div>
         </div>
       </header>
 
-      {/* Supabase error banner */}
+      {/* ─── ERROR BANNERS ───────────────────────────────────────── */}
       {supabaseError && (
-        <div className="mb-8 neumorph-inset p-5 border-l-4 border-red-500 bg-red-500/5">
-          <div className="flex items-center gap-4">
-            <AlertCircle className="w-6 h-6 text-red-500 shrink-0" />
-            <div>
-              <p className="font-bold text-red-600 text-lg">Database Connection Issue</p>
-              <p className="text-sm text-[#718096] font-medium mt-1">{supabaseError}</p>
-            </div>
+        <div className="mb-6 glass-banner p-4 flex items-center gap-3"
+          style={{ borderLeft: "3px solid #f87171" }}>
+          <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />
+          <div>
+            <p className="font-semibold text-red-400 text-sm">Database Connection Issue</p>
+            <p className="text-xs text-[#8892b0] mt-0.5">{supabaseError}</p>
           </div>
         </div>
       )}
 
-      {/* MQTT Disconnected Banner */}
       {mqttStatus === "DISCONNECTED" && (
-        <div className="mb-8 neumorph-inset p-5 border-l-4 border-amber-500 bg-amber-500/5">
-          <div className="flex items-center gap-4">
-            <WifiOff className="w-6 h-6 text-amber-500 shrink-0" />
-            <div>
-              <p className="font-bold text-amber-600 text-lg">
-                MQTT Pipeline Inactive
-              </p>
-              <p className="text-sm text-[#718096] font-medium mt-1">
-                {mqttMessage}. The dashboard is showing the last known data.
-                Live updates will resume when the MQTT subscriber reconnects.
-              </p>
-            </div>
+        <div className="mb-6 glass-banner p-4 flex items-center gap-3"
+          style={{ borderLeft: "3px solid #fbbf24" }}>
+          <WifiOff className="w-5 h-5 text-amber-400 shrink-0" />
+          <div>
+            <p className="font-semibold text-amber-400 text-sm">MQTT Pipeline Inactive</p>
+            <p className="text-xs text-[#8892b0] mt-0.5">
+              {mqttMessage}. Showing last known data — live updates resume when MQTT reconnects.
+            </p>
           </div>
         </div>
       )}
 
-      <div className="mb-8 flex items-center justify-between">
-        <div className="text-[#718096] text-sm font-semibold flex items-center gap-2 bg-[#e6eef4] px-5 py-2.5 rounded-full shadow-[inset_4px_4px_8px_#c5d2e0,inset_-4px_-4px_8px_#ffffff]">
-          <Activity className="w-4 h-4 text-blue-500" />
-          Last Updated:{" "}
-          <span className="text-[#2d3748] ml-1">
-            {lastUpdatedTime
-              ? formatDistanceToNow(lastUpdatedTime, { addSuffix: true })
-              : "Waiting for data..."}
-          </span>
+      {/* ─── LAST UPDATED ────────────────────────────────────────── */}
+      <div className="mb-8 flex items-center gap-2 text-xs font-medium text-[#5a6380]">
+        <Activity className="w-3.5 h-3.5" />
+        <span>Last updated:</span>
+        <span className="text-[#8892b0]">
+          {lastUpdatedTime
+            ? formatDistanceToNow(lastUpdatedTime, { addSuffix: true })
+            : "Waiting for data..."}
+        </span>
+      </div>
+
+      {/* ─── METRIC CARDS ────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        {/* Temperature */}
+        <div className="glass-card p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="icon-glow blue w-10 h-10">
+              <Thermometer className="w-5 h-5 text-[#4f8fff]" />
+            </div>
+            <span className="text-xs font-semibold text-[#5a6380] uppercase tracking-wider">Temperature</span>
+          </div>
+          <div className="glass-well py-4 px-4 flex items-baseline justify-center gap-1">
+            <span className="text-4xl font-bold text-[#e8ecf5] tabular-nums">
+              {latestData ? latestData.temperature.toFixed(1) : "--"}
+            </span>
+            <span className="text-lg font-semibold text-[#4f8fff]">°C</span>
+          </div>
+        </div>
+
+        {/* Humidity */}
+        <div className="glass-card p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="icon-glow emerald w-10 h-10">
+              <Droplets className="w-5 h-5 text-[#34d399]" />
+            </div>
+            <span className="text-xs font-semibold text-[#5a6380] uppercase tracking-wider">Humidity</span>
+          </div>
+          <div className="glass-well py-4 px-4 flex items-baseline justify-center gap-1">
+            <span className="text-4xl font-bold text-[#e8ecf5] tabular-nums">
+              {latestData ? latestData.humidity.toFixed(1) : "--"}
+            </span>
+            <span className="text-lg font-semibold text-[#34d399]">%</span>
+          </div>
+        </div>
+
+        {/* Device */}
+        <div className="glass-card p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="icon-glow purple w-10 h-10">
+              <Cpu className="w-5 h-5 text-[#a78bfa]" />
+            </div>
+            <span className="text-xs font-semibold text-[#5a6380] uppercase tracking-wider">Device</span>
+          </div>
+          <div className="glass-well py-4 px-4 text-center">
+            <div className="text-xl font-bold text-[#e8ecf5]">
+              {latestData?.device_id || DEVICE_ID}
+            </div>
+            <div className="text-xs text-[#5a6380] mt-1.5 font-medium">ESP32 Microcontroller</div>
+          </div>
+        </div>
+
+        {/* Connection */}
+        <div className="glass-card p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="icon-glow orange w-10 h-10">
+              <Wifi className="w-5 h-5 text-[#fb923c]" />
+            </div>
+            <span className="text-xs font-semibold text-[#5a6380] uppercase tracking-wider">Connection</span>
+          </div>
+          <div className="glass-well py-4 px-4 flex flex-col items-center justify-center">
+            <span className="inline-flex items-center gap-2 font-bold text-lg">
+              <span className={`status-dot ${deviceStatus === "ONLINE" ? "online" : "offline"}`}></span>
+              <span className={deviceStatus === "ONLINE" ? "text-emerald-400" : "text-gray-500"}
+                style={deviceStatus === "ONLINE" ? { textShadow: "0 0 16px rgba(52,211,153,0.3)" } : {}}>
+                {deviceStatus}
+              </span>
+            </span>
+            <span className="text-xs text-[#5a6380] mt-1.5 font-medium">Timeout: {DEVICE_TIMEOUT_SEC}s</span>
+          </div>
         </div>
       </div>
 
-      <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
-        {/* Card 1: Temperature */}
-        <div className="neumorph-card p-8 flex flex-col items-center text-center">
-          <div className="w-16 h-16 neumorph-inset rounded-2xl flex items-center justify-center mb-5 text-blue-500">
-            <Thermometer className="w-8 h-8" />
-          </div>
-          <h2 className="text-[#718096] font-bold text-sm tracking-widest uppercase mb-4">
-            Temperature
-          </h2>
-          <div className="flex items-start justify-center gap-1 w-full neumorph-inset py-5 px-2 rounded-2xl">
-            <span className="text-5xl font-black text-[#2d3748] tracking-tighter">
-              {latestData ? latestData.temperature.toFixed(1) : "--"}
-            </span>
-            <span className="text-xl text-blue-500 font-bold mt-1">°C</span>
-          </div>
-        </div>
-
-        {/* Card 2: Humidity */}
-        <div className="neumorph-card p-8 flex flex-col items-center text-center">
-          <div className="w-16 h-16 neumorph-inset rounded-2xl flex items-center justify-center mb-5 text-emerald-500">
-            <Droplets className="w-8 h-8" />
-          </div>
-          <h2 className="text-[#718096] font-bold text-sm tracking-widest uppercase mb-4">
-            Humidity
-          </h2>
-          <div className="flex items-start justify-center gap-1 w-full neumorph-inset py-5 px-2 rounded-2xl">
-            <span className="text-5xl font-black text-[#2d3748] tracking-tighter">
-              {latestData ? latestData.humidity.toFixed(1) : "--"}
-            </span>
-            <span className="text-xl text-emerald-500 font-bold mt-1">%</span>
-          </div>
-        </div>
-
-        {/* Card 3: Device */}
-        <div className="neumorph-card p-8 flex flex-col items-center text-center">
-          <div className="w-16 h-16 neumorph-inset rounded-2xl flex items-center justify-center mb-5 text-purple-500">
-            <Cpu className="w-8 h-8" />
-          </div>
-          <h2 className="text-[#718096] font-bold text-sm tracking-widest uppercase mb-4">
-            Device
-          </h2>
-          <div className="w-full neumorph-inset py-4 px-4 rounded-2xl flex flex-col items-center justify-center min-h-[96px]">
-            <div className="text-2xl font-black text-[#2d3748]">
-              {latestData?.device_id || DEVICE_ID}
-            </div>
-            <div className="text-xs font-bold text-[#718096] mt-2">
-              ESP32 Microcontroller
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Connection */}
-        <div className="neumorph-card p-8 flex flex-col items-center text-center">
-          <div className="w-16 h-16 neumorph-inset rounded-2xl flex items-center justify-center mb-5 text-orange-500">
-            <Wifi className="w-8 h-8" />
-          </div>
-          <h2 className="text-[#718096] font-bold text-sm tracking-widest uppercase mb-4">
-            Connection
-          </h2>
-          <div className="w-full neumorph-inset py-4 px-4 rounded-2xl flex flex-col items-center justify-center min-h-[96px]">
-            {deviceStatus === "ONLINE" ? (
-              <span className="inline-flex items-center gap-2 font-black text-emerald-600 text-lg">
-                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]"></span>
-                ONLINE
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-2 font-black text-gray-500 text-lg">
-                <span className="w-3 h-3 rounded-full bg-gray-400"></span>
-                OFFLINE
-              </span>
-            )}
-            <div className="text-xs font-bold text-[#718096] mt-2">
-              Timeout: {DEVICE_TIMEOUT_SEC}s
-            </div>
-          </div>
-        </div>
-      </main>
-
-      {/* Charts Section */}
+      {/* ─── CHARTS ──────────────────────────────────────────────── */}
       {data.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Temperature Chart */}
-          <div className="neumorph-card p-8">
-            <div className="flex items-center gap-4 mb-8">
-              <div className="w-12 h-12 neumorph-inset rounded-2xl flex items-center justify-center">
-                <Thermometer className="w-6 h-6 text-blue-500" />
+          <div className="glass-card p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="icon-glow blue w-10 h-10">
+                <Thermometer className="w-5 h-5 text-[#4f8fff]" />
               </div>
-              <h3 className="text-2xl font-black text-[#2d3748]">
-                Temperature History
-              </h3>
+              <h3 className="text-base font-bold text-[#e8ecf5]">Temperature History</h3>
             </div>
-            <div className="h-[350px] w-full neumorph-inset p-5 rounded-3xl">
+            <div className="glass-well p-3 rounded-2xl" style={{ height: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
+                <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
                   <defs>
-                    <linearGradient id="colorTemp" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    <linearGradient id="tempGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#4f8fff" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#4f8fff" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
-                    strokeDasharray="6 6"
-                    stroke="rgba(113, 128, 150, 0.15)"
+                    strokeDasharray="4 4"
+                    stroke="rgba(255,255,255,0.04)"
                     vertical={false}
                   />
                   <XAxis
                     dataKey="timestamp"
                     tickFormatter={formatXAxis}
-                    stroke="#a0aec0"
-                    tick={{ fill: "#718096", fontSize: 13, fontWeight: 700 }}
+                    stroke="transparent"
+                    tick={{ fill: "#5a6380", fontSize: 11, fontWeight: 600 }}
                     axisLine={false}
                     tickLine={false}
-                    dy={15}
+                    dy={8}
+                    interval="preserveStartEnd"
                   />
                   <YAxis
-                    domain={["auto", "auto"]}
-                    stroke="#a0aec0"
-                    tick={{ fill: "#718096", fontSize: 13, fontWeight: 700 }}
-                    tickFormatter={(val) => `${val}°`}
+                    domain={["dataMin - 1", "dataMax + 1"]}
+                    stroke="transparent"
+                    tick={{ fill: "#5a6380", fontSize: 11, fontWeight: 600 }}
+                    tickFormatter={(val: number) => `${val}°`}
                     axisLine={false}
                     tickLine={false}
-                    dx={-15}
+                    dx={-5}
+                    width={45}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#e6eef4",
-                      borderColor: "rgba(255, 255, 255, 0.4)",
-                      color: "#2d3748",
-                      borderRadius: "16px",
-                      fontWeight: "bold",
-                      boxShadow: "10px 10px 20px #c5d2e0, -10px -10px 20px #ffffff",
-                      padding: "16px",
+                      backgroundColor: "rgba(15, 22, 45, 0.92)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "12px",
+                      color: "#e8ecf5",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      backdropFilter: "blur(16px)",
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                      padding: "12px 16px",
                     }}
+                    labelStyle={{ color: "#8892b0", fontSize: "11px", marginBottom: "6px" }}
                     labelFormatter={(label) => {
                       try {
-                        return format(
-                          new Date(label as string | number),
-                          "PPpp"
-                        );
+                        return format(new Date(label as string | number), "PPpp");
                       } catch {
                         return String(label);
                       }
                     }}
+                    formatter={(value) => [`${Number(value).toFixed(1)}°C`, "Temperature"]}
                   />
                   <Area
                     type="monotone"
                     dataKey="temperature"
-                    stroke="#3b82f6"
-                    strokeWidth={5}
+                    stroke="#4f8fff"
+                    strokeWidth={2.5}
+                    fill="url(#tempGrad)"
                     fillOpacity={1}
-                    fill="url(#colorTemp)"
+                    dot={{ r: 3, fill: "#4f8fff", stroke: "#0f1528", strokeWidth: 2 }}
                     activeDot={{
-                      r: 8,
-                      fill: "#3b82f6",
-                      strokeWidth: 4,
-                      stroke: "#e6eef4",
+                      r: 6,
+                      fill: "#4f8fff",
+                      stroke: "#0f1528",
+                      strokeWidth: 3,
+                      style: { filter: "drop-shadow(0 0 6px rgba(79,143,255,0.5))" },
                     }}
-                    animationDuration={1500}
+                    animationDuration={800}
+                    animationEasing="ease-out"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -465,82 +449,86 @@ export default function Dashboard() {
           </div>
 
           {/* Humidity Chart */}
-          <div className="neumorph-card p-8">
-            <div className="flex items-center gap-4 mb-8">
-              <div className="w-12 h-12 neumorph-inset rounded-2xl flex items-center justify-center">
-                <Droplets className="w-6 h-6 text-emerald-500" />
+          <div className="glass-card p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="icon-glow emerald w-10 h-10">
+                <Droplets className="w-5 h-5 text-[#34d399]" />
               </div>
-              <h3 className="text-2xl font-black text-[#2d3748]">
-                Humidity History
-              </h3>
+              <h3 className="text-base font-bold text-[#e8ecf5]">Humidity History</h3>
             </div>
-            <div className="h-[350px] w-full neumorph-inset p-5 rounded-3xl">
+            <div className="glass-well p-3 rounded-2xl" style={{ height: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
+                <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
                   <defs>
-                    <linearGradient id="colorHum" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <linearGradient id="humGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#34d399" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#34d399" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid
-                    strokeDasharray="6 6"
-                    stroke="rgba(113, 128, 150, 0.15)"
+                    strokeDasharray="4 4"
+                    stroke="rgba(255,255,255,0.04)"
                     vertical={false}
                   />
                   <XAxis
                     dataKey="timestamp"
                     tickFormatter={formatXAxis}
-                    stroke="#a0aec0"
-                    tick={{ fill: "#718096", fontSize: 13, fontWeight: 700 }}
+                    stroke="transparent"
+                    tick={{ fill: "#5a6380", fontSize: 11, fontWeight: 600 }}
                     axisLine={false}
                     tickLine={false}
-                    dy={15}
+                    dy={8}
+                    interval="preserveStartEnd"
                   />
                   <YAxis
-                    domain={["auto", "auto"]}
-                    stroke="#a0aec0"
-                    tick={{ fill: "#718096", fontSize: 13, fontWeight: 700 }}
-                    tickFormatter={(val) => `${val}%`}
+                    domain={["dataMin - 2", "dataMax + 2"]}
+                    stroke="transparent"
+                    tick={{ fill: "#5a6380", fontSize: 11, fontWeight: 600 }}
+                    tickFormatter={(val: number) => `${val}%`}
                     axisLine={false}
                     tickLine={false}
-                    dx={-15}
+                    dx={-5}
+                    width={45}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: "#e6eef4",
-                      borderColor: "rgba(255, 255, 255, 0.4)",
-                      color: "#2d3748",
-                      borderRadius: "16px",
-                      fontWeight: "bold",
-                      boxShadow: "10px 10px 20px #c5d2e0, -10px -10px 20px #ffffff",
-                      padding: "16px",
+                      backgroundColor: "rgba(15, 22, 45, 0.92)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: "12px",
+                      color: "#e8ecf5",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      backdropFilter: "blur(16px)",
+                      boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                      padding: "12px 16px",
                     }}
+                    labelStyle={{ color: "#8892b0", fontSize: "11px", marginBottom: "6px" }}
                     labelFormatter={(label) => {
                       try {
-                        return format(
-                          new Date(label as string | number),
-                          "PPpp"
-                        );
+                        return format(new Date(label as string | number), "PPpp");
                       } catch {
                         return String(label);
                       }
                     }}
+                    formatter={(value) => [`${Number(value).toFixed(1)}%`, "Humidity"]}
                   />
                   <Area
                     type="monotone"
                     dataKey="humidity"
-                    stroke="#10b981"
-                    strokeWidth={5}
+                    stroke="#34d399"
+                    strokeWidth={2.5}
+                    fill="url(#humGrad)"
                     fillOpacity={1}
-                    fill="url(#colorHum)"
+                    dot={{ r: 3, fill: "#34d399", stroke: "#0f1528", strokeWidth: 2 }}
                     activeDot={{
-                      r: 8,
-                      fill: "#10b981",
-                      strokeWidth: 4,
-                      stroke: "#e6eef4",
+                      r: 6,
+                      fill: "#34d399",
+                      stroke: "#0f1528",
+                      strokeWidth: 3,
+                      style: { filter: "drop-shadow(0 0 6px rgba(52,211,153,0.5))" },
                     }}
-                    animationDuration={1500}
+                    animationDuration={800}
+                    animationEasing="ease-out"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -548,37 +536,33 @@ export default function Dashboard() {
           </div>
         </div>
       ) : (
-        /* Empty state */
-        <div className="neumorph-card p-12 text-center max-w-3xl mx-auto mt-12">
-          <div className="w-24 h-24 neumorph-inset rounded-[2rem] flex items-center justify-center mx-auto mb-8">
-            <Activity className="w-12 h-12 text-blue-400" />
+        /* ─── EMPTY STATE ──────────────────────────────────────── */
+        <div className="glass-card p-12 text-center max-w-2xl mx-auto">
+          <div className="icon-glow blue w-16 h-16 mx-auto mb-6">
+            <Activity className="w-8 h-8 text-[#4f8fff]" />
           </div>
-          <h3 className="text-3xl font-black text-[#2d3748] mb-4 tracking-tight">
+          <h3 className="text-2xl font-bold text-[#e8ecf5] mb-3">
             No Sensor Data Yet
           </h3>
-          <p className="text-[#718096] text-lg font-medium leading-relaxed mb-10 max-w-xl mx-auto">
-            The dashboard is ready and waiting for sensor readings. Once your
-            ESP32 device starts publishing data via MQTT, it will appear here
-            automatically.
+          <p className="text-[#8892b0] text-sm leading-relaxed mb-8 max-w-md mx-auto">
+            The dashboard is ready. Once your ESP32 device starts publishing
+            data via MQTT, readings will appear here automatically.
           </p>
-          <div className="flex flex-col sm:flex-row gap-6 justify-center text-sm font-bold text-[#718096]">
-            <div className="neumorph-inset px-8 py-5 rounded-3xl flex-1">
-              <span className="block text-xs uppercase tracking-widest text-[#a0aec0] mb-3">
-                MQTT Status
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-semibold">
+            <div className="glass-well py-4 px-4 text-center">
+              <span className="block text-[#5a6380] uppercase tracking-wider mb-2">MQTT</span>
+              <span className={mqttTextClass()} style={{ textShadow: `0 0 10px ${mqttColor()}40` }}>
+                ● {mqttStatus}
               </span>
-              <span className={`text-lg font-black ${getMqttStatusColor()}`}>● {mqttStatus}</span>
             </div>
-            <div className="neumorph-inset px-8 py-5 rounded-3xl flex-1">
-              <span className="block text-xs uppercase tracking-widest text-[#a0aec0] mb-3">
-                Device
-              </span>
-              <span className="text-lg font-black text-[#4a5568]">{DEVICE_ID}</span>
+            <div className="glass-well py-4 px-4 text-center">
+              <span className="block text-[#5a6380] uppercase tracking-wider mb-2">Device</span>
+              <span className="text-[#8892b0]">{DEVICE_ID}</span>
             </div>
-            <div className="neumorph-inset px-8 py-5 rounded-3xl flex-1">
-              <span className="block text-xs uppercase tracking-widest text-[#a0aec0] mb-3">
-                Database
-              </span>
-              <span className={`text-lg font-black ${supabaseError ? "text-red-500" : "text-emerald-500"}`}>
+            <div className="glass-well py-4 px-4 text-center">
+              <span className="block text-[#5a6380] uppercase tracking-wider mb-2">Database</span>
+              <span className={supabaseError ? "text-red-400" : "text-emerald-400"}
+                style={{ textShadow: supabaseError ? "0 0 10px rgba(248,113,113,0.3)" : "0 0 10px rgba(52,211,153,0.3)" }}>
                 ● {supabaseError ? "Error" : "Connected"}
               </span>
             </div>
