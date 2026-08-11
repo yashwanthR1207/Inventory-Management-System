@@ -1,298 +1,246 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { Thermometer, Droplets, Cpu, Wifi, Activity } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { format, formatDistanceToNow } from "date-fns";
+import React, { useEffect, useState, useCallback } from 'react';
+import { DashboardHeader } from '@/components/DashboardHeader';
+import { HeroOverview } from '@/components/HeroOverview';
+import { EnvironmentStatusCard } from '@/components/EnvironmentStatusCard';
+import { TemperatureChart } from '@/components/TemperatureChart';
+import { HumidityChart } from '@/components/HumidityChart';
+import { LiveSensorCard } from '@/components/LiveSensorCard';
+import { StorageZoneSection } from '@/components/StorageZoneSection';
+import { AlertsPanel } from '@/components/AlertsPanel';
+import { HealthScoreCard } from '@/components/HealthScoreCard';
+import { SensorReadingsTable } from '@/components/SensorReadingsTable';
+import { DashboardSkeleton } from '@/components/DashboardSkeleton';
 
-type SensorData = {
-  id: string;
-  device_id: string;
-  temperature: number;
-  humidity: number;
-  timestamp: string;
-};
+import { SensorReading, TimeRange, AlertItem, EnvironmentStatus } from '@/types/sensor';
+import { fetchSensorReadings, getStatusForReading } from '@/lib/supabase';
+import { mqttManager } from '@/lib/mqtt';
+import { calculateHealthScore } from '@/lib/healthScore';
+import { ShieldCheck, Server, Cpu, ExternalLink } from 'lucide-react';
 
-export default function Dashboard() {
-  const [data, setData] = useState<SensorData[]>([]);
-  const [latestData, setLatestData] = useState<SensorData | null>(null);
-  const [mqttStatus, setMqttStatus] = useState<"CONNECTED" | "DISCONNECTED">("CONNECTED");
-  const [deviceStatus, setDeviceStatus] = useState<"ONLINE" | "OFFLINE">("OFFLINE");
-  const [lastUpdatedTime, setLastUpdatedTime] = useState<Date | null>(null);
-  const [now, setNow] = useState(new Date());
+export default function EnviroStockDashboard() {
+  const [readings, setReadings] = useState<SensorReading[]>([]);
+  const [currentReading, setCurrentReading] = useState<SensorReading | null>(null);
+  const [mqttStatus, setMqttStatus] = useState<'Connected' | 'Connecting' | 'Disconnected' | 'Error'>('Connecting');
+  const [timeRange, setTimeRange] = useState<TimeRange>('24H');
+  const [tempUnit, setTempUnit] = useState<'C' | 'F'>('C');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [secondsAgo, setSecondsAgo] = useState(0);
 
-  // Configuration
-  const DEVICE_TIMEOUT_SEC = 60;
-  const DEVICE_ID = "esp32-01"; // or dynamically detect
+  // Active alerts list derived from incoming telemetry
+  const [alerts, setAlerts] = useState<AlertItem[]>([
+    {
+      id: 'alt-1',
+      timestamp: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+      severity: 'info',
+      title: 'HiveMQ MQTT Socket Connected',
+      message: 'Secure WebSocket TLS session established with HiveMQ Cloud broker.',
+      value: 'wss://',
+      isResolved: true,
+    },
+  ]);
 
-  useEffect(() => {
-    // Timer to update relative time
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
+  // Initial database load
+  const loadData = useCallback(async (range: TimeRange) => {
+    setIsRefreshing(true);
+    const data = await fetchSensorReadings(range);
+    setReadings(data);
+    if (data.length > 0) {
+      const latest = data[data.length - 1];
+      setCurrentReading(latest);
+      setLastUpdated(new Date(latest.timestamp));
+    }
+    setIsLoading(false);
+    setIsRefreshing(false);
   }, []);
 
   useEffect(() => {
-    const fetchData = async () => {
-      const { data: sensorData, error } = await supabase
-        .from("sensor_data")
-        .select("*")
-        .order("timestamp", { ascending: false })
-        .limit(20);
+    loadData(timeRange);
+  }, [timeRange, loadData]);
 
-      if (error) {
-        console.error("Error fetching data:", error);
-        return;
-      }
+  // Connect to MQTT live stream
+  useEffect(() => {
+    mqttManager.connect();
 
-      if (sensorData && sensorData.length > 0) {
-        setLatestData(sensorData[0]);
-        setLastUpdatedTime(new Date(sensorData[0].timestamp));
-        
-        // Reverse for chart (oldest to newest)
-        setData(sensorData.reverse());
-      }
-    };
+    const unsubscribeStatus = mqttManager.subscribeStatus((status) => {
+      setMqttStatus(status);
+    });
 
-    fetchData();
+    const unsubscribeReadings = mqttManager.subscribeReadings((reading) => {
+      setCurrentReading(reading);
+      setLastUpdated(new Date());
 
-    // Subscribe to real-time changes
-    const channel = supabase
-      .channel("public:sensor_data")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "sensor_data" },
-        (payload) => {
-          const newRecord = payload.new as SensorData;
-          setLatestData(newRecord);
-          setLastUpdatedTime(new Date(newRecord.timestamp));
-          setData((current) => {
-            const updated = [...current, newRecord];
-            if (updated.length > 20) return updated.slice(updated.length - 20);
-            return updated;
-          });
-          setMqttStatus("CONNECTED"); // Assume MQTT is alive if we got data
+      // Append live packet to history array
+      setReadings((prev) => {
+        const updated = [...prev, reading];
+        // Keep up to 250 data points for active charts
+        if (updated.length > 250) {
+          return updated.slice(updated.length - 250);
         }
-      )
-      .subscribe();
+        return updated;
+      });
+
+      // Dynamic anomaly detection alert triggers
+      if (reading.temperature > 28.0) {
+        const newAlert: AlertItem = {
+          id: `alert-temp-${Date.now()}`,
+          timestamp: reading.timestamp,
+          severity: 'critical',
+          title: 'High Temperature Threshold Warning',
+          message: `Sensor ${reading.device_id} reported elevated reading exceeding safety baseline.`,
+          value: `${reading.temperature.toFixed(1)}°C`,
+          isResolved: false,
+        };
+        setAlerts((prevAlerts) => [newAlert, ...prevAlerts.slice(0, 9)]);
+      } else if (reading.humidity > 68.0) {
+        const newAlert: AlertItem = {
+          id: `alert-hum-${Date.now()}`,
+          timestamp: reading.timestamp,
+          severity: 'warning',
+          title: 'Elevated Relative Humidity Warning',
+          message: `Sensor ${reading.device_id} detected rising moisture levels in main storage bay.`,
+          value: `${reading.humidity.toFixed(1)}% RH`,
+          isResolved: false,
+        };
+        setAlerts((prevAlerts) => [newAlert, ...prevAlerts.slice(0, 9)]);
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      unsubscribeStatus();
+      unsubscribeReadings();
+      mqttManager.disconnect();
     };
   }, []);
 
-  // Update device status based on last reading
+  // Update second counter ticker
   useEffect(() => {
-    if (!lastUpdatedTime) return;
-    
-    const diffInSeconds = (now.getTime() - lastUpdatedTime.getTime()) / 1000;
-    if (diffInSeconds < DEVICE_TIMEOUT_SEC) {
-      setDeviceStatus("ONLINE");
-    } else {
-      setDeviceStatus("OFFLINE");
-    }
-  }, [now, lastUpdatedTime]);
+    const timer = setInterval(() => {
+      const diff = Math.max(0, Math.floor((Date.now() - lastUpdated.getTime()) / 1000));
+      setSecondsAgo(diff);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lastUpdated]);
 
-  const formatXAxis = (tickItem: string) => {
-    try {
-      return format(new Date(tickItem), "HH:mm:ss");
-    } catch {
-      return "";
-    }
-  };
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  // Fallback defaults if no reading has arrived yet
+  const activeTemp = currentReading ? currentReading.temperature : 22.5;
+  const activeHumidity = currentReading ? currentReading.humidity : 52.0;
+  const activeStatus: EnvironmentStatus = currentReading
+    ? currentReading.status
+    : getStatusForReading(activeTemp, activeHumidity);
+  const healthResult = calculateHealthScore(activeTemp, activeHumidity);
 
   return (
-    <div className="min-h-screen p-6 md:p-12 max-w-7xl mx-auto text-[#4a5568]">
-      <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <h1 className="text-4xl font-extrabold text-[#2d3748] drop-shadow-sm tracking-tight">
-            Inventory Environment
-          </h1>
-          <p className="text-[#718096] mt-2 font-medium">Real-time tracking of warehouse storage conditions</p>
-        </div>
+    <div className="min-h-screen bg-industrial-grid pb-12 font-sans selection:bg-blue-500 selection:text-white">
+      {/* 1. TOP NAVIGATION */}
+      <DashboardHeader
+        mqttStatus={mqttStatus}
+        lastUpdatedSecondsAgo={secondsAgo}
+        tempUnit={tempUnit}
+        onToggleTempUnit={() => setTempUnit((u) => (u === 'C' ? 'F' : 'C'))}
+        onRefreshData={() => loadData(timeRange)}
+        isRefreshing={isRefreshing}
+      />
+
+      <main className="max-w-7xl mx-auto px-4 lg:px-8 space-y-6">
         
-        <div className="flex flex-col gap-3 text-sm font-bold">
-          <div className="flex items-center gap-3 neumorph-button px-5 py-3 text-[#4a5568]">
-            <Wifi className={`w-5 h-5 ${mqttStatus === "CONNECTED" ? "text-emerald-500" : "text-red-500"}`} />
-            <span>MQTT <span className={mqttStatus === "CONNECTED" ? "text-emerald-500" : "text-red-500"}>● {mqttStatus}</span></span>
-          </div>
-          <div className="flex items-center gap-3 neumorph-button px-5 py-3 text-[#4a5568]">
-            <Cpu className={`w-5 h-5 ${deviceStatus === "ONLINE" ? "text-emerald-500" : "text-gray-400"}`} />
-            <span>{latestData?.device_id || DEVICE_ID} <span className={deviceStatus === "ONLINE" ? "text-emerald-500" : "text-gray-400"}>● {deviceStatus}</span></span>
-          </div>
-        </div>
-      </header>
+        {/* 2. HERO / OVERVIEW SECTION */}
+        <HeroOverview
+          currentTemp={activeTemp}
+          currentHumidity={activeHumidity}
+          status={activeStatus}
+          deviceName={currentReading?.device_id || 'ESP32-01'}
+          isOnline={mqttStatus === 'Connected'}
+          tempUnit={tempUnit}
+        />
 
-      <div className="mb-8 flex items-center justify-between pl-2">
-        <div className="text-[#718096] text-sm font-semibold flex items-center gap-2">
-          <Activity className="w-5 h-5" />
-          Last Updated: {lastUpdatedTime ? formatDistanceToNow(lastUpdatedTime, { addSuffix: true }) : "Waiting for data..."}
-        </div>
-      </div>
+        {/* 3. ENVIRONMENT STATUS CARD */}
+        <EnvironmentStatusCard
+          status={activeStatus}
+          temperature={activeTemp}
+          humidity={activeHumidity}
+          recommendation={healthResult.recommendation}
+        />
 
-      <main className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
-        {/* Card 1: Temperature */}
-        <div className="neumorph-card p-6 flex flex-col relative overflow-hidden group">
-          <h2 className="text-[#718096] font-bold text-lg flex items-center gap-2 uppercase tracking-wide">
-            <Thermometer className="w-6 h-6 text-blue-500" /> Temperature
-          </h2>
-          <div className="mt-6 flex items-end gap-2 neumorph-inset p-4 self-start rounded-2xl">
-            <span className="text-5xl font-black text-[#2d3748]">
-              {latestData ? latestData.temperature.toFixed(1) : "--"}
-            </span>
-            <span className="text-2xl text-blue-500 font-bold mb-1">°C</span>
-          </div>
-        </div>
-
-        {/* Card 2: Humidity */}
-        <div className="neumorph-card p-6 flex flex-col relative overflow-hidden group">
-          <h2 className="text-[#718096] font-bold text-lg flex items-center gap-2 uppercase tracking-wide">
-            <Droplets className="w-6 h-6 text-emerald-500" /> Humidity
-          </h2>
-          <div className="mt-6 flex items-end gap-2 neumorph-inset p-4 self-start rounded-2xl">
-            <span className="text-5xl font-black text-[#2d3748]">
-              {latestData ? latestData.humidity.toFixed(1) : "--"}
-            </span>
-            <span className="text-2xl text-emerald-500 font-bold mb-1">%</span>
-          </div>
+        {/* 4. TEMPERATURE & HUMIDITY ANALYTICS CHARTS */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <TemperatureChart
+            readings={readings}
+            timeRange={timeRange}
+            onTimeRangeChange={(r) => setTimeRange(r)}
+            tempUnit={tempUnit}
+            isLoading={isRefreshing}
+          />
+          <HumidityChart
+            readings={readings}
+            timeRange={timeRange}
+            onTimeRangeChange={(r) => setTimeRange(r)}
+            isLoading={isRefreshing}
+          />
         </div>
 
-        {/* Card 3: Device */}
-        <div className="neumorph-card p-6 flex flex-col justify-between">
-          <h2 className="text-[#718096] font-bold text-lg flex items-center gap-2 uppercase tracking-wide">
-            <Cpu className="w-6 h-6 text-purple-500" /> Device
-          </h2>
-          <div className="text-2xl font-black text-[#2d3748] mt-4">
-            {latestData?.device_id || DEVICE_ID}
-          </div>
-          <div className="text-sm font-semibold text-[#a0aec0] mt-2">
-            ESP32 Microcontroller
-          </div>
+        {/* 5, 7, 8. SENSOR CARD, HEALTH SCORE, ALERTS PANEL GRID */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+          {/* 5. LIVE SENSOR CARD */}
+          <LiveSensorCard
+            deviceName={currentReading?.device_id || 'ESP32-01'}
+            isOnline={mqttStatus === 'Connected'}
+            mqttStatus={mqttStatus}
+            lastReading={currentReading}
+          />
+
+          {/* 8. ENVIRONMENTAL HEALTH SCORE */}
+          <HealthScoreCard
+            temperature={activeTemp}
+            humidity={activeHumidity}
+          />
+
+          {/* 7. ALERTS & ANOMALIES */}
+          <AlertsPanel alerts={alerts} />
+
         </div>
 
-        {/* Card 4: Connection */}
-        <div className="neumorph-card p-6 flex flex-col justify-between">
-          <h2 className="text-[#718096] font-bold text-lg flex items-center gap-2 uppercase tracking-wide">
-            <Wifi className="w-6 h-6 text-orange-500" /> Connection
-          </h2>
-          <div className="mt-4">
-            {deviceStatus === "ONLINE" ? (
-              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full neumorph-inset font-bold text-emerald-600">
-                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-                ONLINE
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full neumorph-inset font-bold text-gray-500">
-                <span className="w-3 h-3 rounded-full bg-gray-400"></span>
-                OFFLINE
-              </span>
-            )}
+        {/* 6. STORAGE ZONES SECTION */}
+        <StorageZoneSection
+          currentTemp={activeTemp}
+          currentHumidity={activeHumidity}
+        />
+
+        {/* 9. RECENT SENSOR READINGS TABLE */}
+        <SensorReadingsTable
+          readings={[...readings].reverse()}
+          tempUnit={tempUnit}
+        />
+
+        {/* FOOTER */}
+        <footer className="pt-8 border-t border-gray-800/80 text-center md:flex md:items-center md:justify-between text-xs font-mono text-gray-500">
+          <div className="flex items-center justify-center md:justify-start gap-2 mb-2 md:mb-0">
+            <Cpu className="w-4 h-4 text-blue-400" />
+            <span className="font-bold text-gray-300">EnviroStock Intelligence</span>
+            <span>— Commercial Warehouse IoT Monitoring</span>
           </div>
-          <div className="text-sm font-semibold text-[#a0aec0] mt-2">
-            Timeout: {DEVICE_TIMEOUT_SEC}s
+          <div className="flex items-center justify-center gap-4 text-gray-400">
+            <span>ESP32</span>
+            <span>•</span>
+            <span>DHT11</span>
+            <span>•</span>
+            <span>HiveMQ Cloud</span>
+            <span>•</span>
+            <span>Supabase</span>
+            <span>•</span>
+            <span>Next.js</span>
           </div>
-        </div>
+        </footer>
+
       </main>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Temperature Chart */}
-        <div className="neumorph-card p-6">
-          <h3 className="text-xl font-bold text-[#2d3748] mb-6 flex items-center gap-2">
-            <Thermometer className="w-6 h-6 text-blue-500" /> Temperature History
-          </h3>
-          <div className="h-72 w-full neumorph-inset p-4 rounded-3xl">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e0" vertical={false} />
-                <XAxis 
-                  dataKey="timestamp" 
-                  tickFormatter={formatXAxis} 
-                  stroke="#718096" 
-                  tick={{ fill: '#718096', fontWeight: 'bold' }} 
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis 
-                  domain={['auto', 'auto']} 
-                  stroke="#718096" 
-                  tick={{ fill: '#718096', fontWeight: 'bold' }}
-                  tickFormatter={(val) => `${val}°`}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#e0e5ec', borderColor: '#cbd5e0', color: '#2d3748', borderRadius: '12px', fontWeight: 'bold', boxShadow: '5px 5px 10px rgb(163, 177, 198, 0.4), -5px -5px 10px rgba(255, 255, 255, 0.3)' }}
-                  labelFormatter={(label) => {
-                    try {
-                      return format(new Date(label as string | number), "PPpp");
-                    } catch {
-                      return String(label);
-                    }
-                  }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="temperature" 
-                  stroke="#3b82f6" 
-                  strokeWidth={4}
-                  dot={{ r: 5, fill: '#3b82f6', strokeWidth: 2, stroke: '#e0e5ec' }}
-                  activeDot={{ r: 8, fill: '#2563eb', strokeWidth: 3, stroke: '#e0e5ec' }}
-                  animationDuration={500}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Humidity Chart */}
-        <div className="neumorph-card p-6">
-          <h3 className="text-xl font-bold text-[#2d3748] mb-6 flex items-center gap-2">
-            <Droplets className="w-6 h-6 text-emerald-500" /> Humidity History
-          </h3>
-          <div className="h-72 w-full neumorph-inset p-4 rounded-3xl">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e0" vertical={false} />
-                <XAxis 
-                  dataKey="timestamp" 
-                  tickFormatter={formatXAxis} 
-                  stroke="#718096" 
-                  tick={{ fill: '#718096', fontWeight: 'bold' }} 
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis 
-                  domain={['auto', 'auto']} 
-                  stroke="#718096" 
-                  tick={{ fill: '#718096', fontWeight: 'bold' }}
-                  tickFormatter={(val) => `${val}%`}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#e0e5ec', borderColor: '#cbd5e0', color: '#2d3748', borderRadius: '12px', fontWeight: 'bold', boxShadow: '5px 5px 10px rgb(163, 177, 198, 0.4), -5px -5px 10px rgba(255, 255, 255, 0.3)' }}
-                  labelFormatter={(label) => {
-                    try {
-                      return format(new Date(label as string | number), "PPpp");
-                    } catch {
-                      return String(label);
-                    }
-                  }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="humidity" 
-                  stroke="#10b981" 
-                  strokeWidth={4}
-                  dot={{ r: 5, fill: '#10b981', strokeWidth: 2, stroke: '#e0e5ec' }}
-                  activeDot={{ r: 8, fill: '#059669', strokeWidth: 3, stroke: '#e0e5ec' }}
-                  animationDuration={500}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
